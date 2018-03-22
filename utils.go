@@ -48,19 +48,3 @@ func convertGqlType(gqlType ast.Type, nullable bool) string {
 	}
 	return prefix + gqlType.String()
 }
-
-func findOperationTypes(definitions []ast.Node) []string {
-	var types []string
-	for _, d := range definitions {
-		switch d.(type) {
-		case *ast.SchemaDefinition:
-			def, _ := d.(*ast.SchemaDefinition)
-
-			for _, operation := range def.OperationTypes {
-				types = append(types, operation.Type.Name.Value)
-			}
-
-		}
-	}
-	return types
-}
