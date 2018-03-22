@@ -1,0 +1,19 @@
+# Golang CircleCI 2.0 configuration file
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.10
+
+    working_directory: /go/src/github.com/abihf/graphql-codegen
+    steps:
+      - checkout
+
+      # specify any bash command here prefixed with `run: `
+      - run:
+          name: install dependencies
+          command: |
+            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+            dep ensure
+
+      - run: go test -v ./...
