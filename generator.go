@@ -85,9 +85,9 @@ func (g *generator) generateFieldResolvers(f *os.File, resolverName string, def 
 		f.Write([]byte(fmt.Sprintf(`
 func (%s *%s) %s(ctx context.Context) (%s, error) {
 	// impl
-	return nil, errors.New("Not Implemented")
+	return %s, errors.New("Not Implemented")
 }
-`, abbr, resolverName, functionName, returnType)))
+`, abbr, resolverName, functionName, returnType, getDefaultReturnValue(field.Type))))
 	}
 	return nil
 }
