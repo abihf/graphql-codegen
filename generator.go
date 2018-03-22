@@ -15,44 +15,54 @@ type generator struct {
 }
 
 func (g *generator) generateResolvers(definitions []ast.Node) {
+	operationTypeNames := make(map[string]bool)
+	interfaceImplementors := make(map[string][]string)
+	var operationTypes []*ast.ObjectDefinition
 
-	typeMaps := make(map[string]*ast.ObjectDefinition)
-	var operationTypeNames []string
 	for _, d := range definitions {
 		switch d.(type) {
-		case *ast.ObjectDefinition:
-			def, _ := d.(*ast.ObjectDefinition)
-			typeMaps[def.Name.Value] = def
-
 		case *ast.SchemaDefinition:
 			def, _ := d.(*ast.SchemaDefinition)
 			for _, operation := range def.OperationTypes {
-				operationTypeNames = append(operationTypeNames, operation.Type.Name.Value)
+				operationTypeNames[operation.Type.Name.Value] = true
+			}
+		case *ast.ObjectDefinition:
+			def, _ := d.(*ast.ObjectDefinition)
+			for _, iface := range def.Interfaces {
+				ifaceName := iface.Name.Value
+				interfaceImplementors[ifaceName] = append(interfaceImplementors[ifaceName], def.Name.Value)
 			}
 		}
 	}
 
-	var operationTypes []*ast.ObjectDefinition
-	for _, name := range operationTypeNames {
-		operationTypes = append(operationTypes, typeMaps[name])
-		delete(typeMaps, name)
-	}
-	g.generateTypeResolver("resolver", "Resolver", operationTypes)
+	for _, d := range definitions {
+		switch d.(type) {
+		case *ast.ObjectDefinition:
+			def, _ := d.(*ast.ObjectDefinition)
+			name := def.Name.Value
+			if _, ok := operationTypeNames[name]; ok {
+				operationTypes = append(operationTypes, def)
+			} else {
+				defs := []*ast.ObjectDefinition{def}
+				g.generateTypeResolver(genFileName(name), name+"Resolver", defs)
+			}
 
-	for name, def := range typeMaps {
-		defs := []*ast.ObjectDefinition{def}
-		g.generateTypeResolver(genFileName(name), name+"Resolver", defs)
+		case *ast.InterfaceDefinition:
+			def, _ := d.(*ast.InterfaceDefinition)
+			name := def.Name.Value
+			g.generateInterfaceResolver(genFileName(name), def, interfaceImplementors[name])
+		}
 	}
+
+	g.generateTypeResolver("resolver", "Resolver", operationTypes)
 }
 
-func (g *generator) generateTypeResolver(fileName, resolverName string, defs []*ast.ObjectDefinition) error {
+func (g *generator) createFile(fileName string) (*os.File, error) {
 	fullPath := path.Join(g.dir, fileName+".go")
 	f, err := os.Create(fullPath)
-
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer f.Close()
 
 	header := fmt.Sprintf("package %s\n", g.packageName)
 	f.Write([]byte(header))
@@ -65,6 +75,16 @@ import (
 
 `
 	f.Write([]byte(importStatements))
+
+	return f, nil
+}
+
+func (g *generator) generateTypeResolver(fileName, resolverName string, defs []*ast.ObjectDefinition) error {
+	f, err := g.createFile(fileName)
+	defer f.Close()
+	if err != nil {
+		return err
+	}
 
 	structDefinition := fmt.Sprintf("// %[1]s implementation\ntype %[1]s struct {}\n", resolverName)
 	f.Write([]byte(structDefinition))
@@ -108,4 +128,53 @@ func (g *generator) generateArgumentStruct(args []*ast.InputValueDefinition) str
 		result += fmt.Sprintf("  %s %s%s\n", argName, argType, description)
 	}
 	return result + "}"
+}
+
+func (g *generator) generateInterfaceResolver(fileName string, def *ast.InterfaceDefinition, implementors []string) error {
+	f, err := g.createFile(fileName)
+	defer f.Close()
+	if err != nil {
+		return err
+	}
+
+	ifaceName := def.Name.Value
+	f.Write([]byte(fmt.Sprintf("type %s interface {\n", ifaceName)))
+
+	firstField := true
+	for _, field := range def.Fields {
+		funcName := normalizeName(field.Name.Value)
+		fieldType := convertGqlType(field.Type, true)
+		var args string
+		if len(field.Arguments) > 0 {
+			args = ", " + g.generateArgumentStruct(field.Arguments)
+		}
+		var prefix string
+		if firstField {
+			firstField = false
+		} else {
+			prefix = "\n"
+		}
+		line := prefix + fmt.Sprintf("  // %[2]s resolves %[3]s from %[1]s\n  %[2]s(context.Context%[5]s) %[4]s\n",
+			ifaceName, funcName, field.Name.Value, fieldType, args)
+		f.Write([]byte(line))
+	}
+	f.Write([]byte("}\n\n"))
+
+	resolverName := ifaceName + "Resolver"
+	ifaceAbbr := strings.ToLower(string(ifaceName[0]))
+	resolverDeclaration := fmt.Sprintf("type %s struct {\n  %s\n}\n", resolverName, ifaceName)
+	f.Write([]byte(resolverDeclaration))
+
+	for _, implementor := range implementors {
+		funcDeclration := fmt.Sprintf(`
+// To%[4]s convert %[2]s to %[4]s
+func (%[3]s *%[1]s) To%[4]s() (*%[4]sResolver, bool) {
+	res, ok := %[3]s.%[2]s.(*%[4]sResolver)
+	return res, ok
+}
+`, resolverName, ifaceName, ifaceAbbr, implementor)
+		f.Write([]byte(funcDeclration))
+	}
+
+	return nil
 }
