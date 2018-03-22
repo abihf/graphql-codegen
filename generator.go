@@ -81,13 +81,31 @@ func (g *generator) generateFieldResolvers(f *os.File, resolverName string, def 
 	for _, field := range def.Fields {
 		functionName := normalizeName(field.Name.Value)
 		returnType := convertGqlType(field.Type, true)
+		var args string
+		if len(field.Arguments) > 0 {
+			args = ", args " + g.generateArgumentStruct(field.Arguments)
+		}
 		f.Write([]byte(fmt.Sprintf("\n// %s resolves %s from %s", functionName, field.Name.Value, def.Name.Value)))
 		f.Write([]byte(fmt.Sprintf(`
-func (%s *%s) %s(ctx context.Context) (%s, error) {
+func (%s *%s) %s(ctx context.Context%s) (%s, error) {
 	// impl
 	return %s, errors.New("Not Implemented")
 }
-`, abbr, resolverName, functionName, returnType, getDefaultReturnValue(field.Type))))
+`, abbr, resolverName, functionName, args, returnType, getDefaultReturnValue(field.Type))))
 	}
 	return nil
+}
+
+func (g *generator) generateArgumentStruct(args []*ast.InputValueDefinition) string {
+	result := "struct{\n"
+	for _, arg := range args {
+		argName := normalizeName(arg.Name.Value)
+		argType := convertGqlType(arg.Type, true)
+		var description string
+		if arg.Description != nil {
+			description = " // " + arg.Description.Value
+		}
+		result += fmt.Sprintf("  %s %s%s\n", argName, argType, description)
+	}
+	return result + "}"
 }
