@@ -51,6 +51,12 @@ func (g *generator) generateResolvers(definitions []ast.Node) {
 			def, _ := d.(*ast.InterfaceDefinition)
 			name := def.Name.Value
 			g.generateInterfaceResolver(genFileName(name), def, interfaceImplementors[name])
+
+		case *ast.EnumDefinition:
+			def, _ := d.(*ast.EnumDefinition)
+			name := def.Name.Value
+			g.generateEnumResolver(genFileName(name), def)
+
 		}
 	}
 
@@ -175,6 +181,32 @@ func (%[3]s *%[1]s) To%[4]s() (*%[4]sResolver, bool) {
 `, resolverName, ifaceName, ifaceAbbr, implementor)
 		f.Write([]byte(funcDeclration))
 	}
+
+	return nil
+}
+
+func (g *generator) generateEnumResolver(fileName string, def *ast.EnumDefinition) error {
+	f, err := g.createFile(fileName)
+	defer f.Close()
+	if err != nil {
+		return err
+	}
+
+	name := def.Name.Value
+	resolverName := name + "Resolver"
+	fmt.Fprintf(f, "type %s string\n\nconst (\n", resolverName)
+
+	for _, val := range def.Values {
+		constName := name + normalizeName(strings.ToLower(val.Name.Value))
+		comment := "= " + val.Name.Value
+		if val.Description != nil {
+			comment = val.Description.Value
+		}
+		fmt.Fprintf(f, "  // %s %s\n", constName, comment)
+		fmt.Fprintf(f, "  %s %s = \"%s\"\n\n", constName, resolverName, val.Name.Value)
+	}
+
+	fmt.Fprintln(f, ")")
 
 	return nil
 }
