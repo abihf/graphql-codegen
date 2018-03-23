@@ -160,7 +160,7 @@ func (g *generator) generateInterfaceResolver(fileName string, def *ast.Interfac
 		} else {
 			prefix = "\n"
 		}
-		line := prefix + fmt.Sprintf("  // %[2]s resolves %[3]s from %[1]s\n  %[2]s(context.Context%[5]s) %[4]s\n",
+		line := prefix + fmt.Sprintf("  // %[2]s resolves %[3]s from %[1]s\n  %[2]s(context.Context%[5]s) (%[4]s, error)\n",
 			ifaceName, funcName, field.Name.Value, fieldType, args)
 		f.Write([]byte(line))
 	}
